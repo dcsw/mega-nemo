@@ -1,0 +1,29 @@
+# Sandbox defaults. Every value here is overridable by MEGA_* env vars and by
+# CLI flags, in that order. Machine-specific overrides go in mega.local.toml
+# (gitignored) so this file stays committable.
+
+[sandbox]
+sandbox = "mega-nemo"
+
+# The two required build inputs. Leave provider/model set to your usual pair;
+# override per-invocation with `mega up --provider openai --model gpt-5.4`.
+provider = "build"                # installer key; "nvidia-prod" also accepted
+model = "nvidia/nemotron-3-super-120b-a12b"
+
+# dcode == langchain-deepagents-code
+agent = "dcode"
+
+# dcode session behavior
+dcode_auto_approval = "thread-opt-in"   # disabled | thread-opt-in
+tool_disclosure = "progressive"          # progressive | direct
+observability = false
+
+# Leave unset to let NemoClaw auto-detect the host GPU.
+# gpu = true
+policy_tier = "restricted"
+
+# Where `mega provision` uploads workspaces inside the sandbox.
+sandbox_workspace = "/home/agent/workspace"
+
+# Pinned keystone release installed into the sandbox.
+keystone_version = "4.0.0"

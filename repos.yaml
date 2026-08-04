@@ -1,0 +1,165 @@
+# mega-nemo source manifest
+#
+# Every entry here is a repo that mega-nemo pulls from, pushes to, and installs
+# into the sandbox. Clones land in `root/` (gitignored) and are wired for a
+# git *triangular* workflow:
+#
+#   upstream  <- fetch/pull only, never pushed to
+#   origin    <- your fork, the push target
+#   local     <- your working clone
+#
+# Concretely, per repo mega sets:
+#   remote.upstream.url          = <upstream>
+#   remote.origin.url            = <fork>
+#   remote.upstream.pushurl      = no-push://<name>   (hard block on push-to-upstream)
+#   remote.pushDefault           = origin
+#   branch.<default>.remote      = upstream           (pull comes from upstream)
+#   branch.<default>.pushRemote  = origin             (push goes to your fork)
+#
+# `mega repos sync` is idempotent — rerun it any time to reconcile.
+
+version: 1
+
+defaults:
+  # Owner of the forks. Overridable with MEGA_FORK_OWNER or --fork-owner.
+  fork_owner: dcsw
+  # Where clones live, relative to the repo root. Gitignored.
+  root: repos
+  remotes:
+    upstream: upstream
+    fork: origin
+  # Default integration strategy for `mega triangle pull`.
+  pull_strategy: rebase
+  # Refuse to touch a repo with uncommitted changes unless --force.
+  require_clean: true
+
+sources:
+  - name: keystone
+    upstream: https://github.com/tacoda/keystone.git
+    fork: https://github.com/{fork_owner}/keystone.git
+    default_branch: main
+    triangle: true
+    role: charter
+    language: go
+    # Installed into the sandbox as a release binary; the clone is for
+    # reading/patching/contributing, not for building on every provision.
+    install:
+      kind: binary
+      # `keystone version` prints the installed version.
+      probe: ["keystone", "version"]
+      # Overridable with MEGA_KEYSTONE_VERSION.
+      version: "4.0.0"
+      # {arch} is resolved from `uname -m` inside the sandbox (x86_64 | arm64).
+      asset: "keystone_{version}_linux_{arch}.tar.gz"
+      release_url: "https://github.com/tacoda/keystone/releases/download/v{version}/{asset}"
+      dest: /usr/local/bin/keystone
+    mcp:
+      # keystone ships an MCP server; registered inside the sandbox.
+      register: true
+      server_name: keystone
+      command: ["keystone", "mcp"]
+
+  - name: metaswarm
+    upstream: https://github.com/dsifry/metaswarm.git
+    fork: https://github.com/{fork_owner}/metaswarm.git
+    default_branch: main
+    triangle: true
+    role: orchestration
+    language: markdown
+    install:
+      kind: skills
+      # Each of these is deployed with `nemoclaw <sandbox> skill install <path>`.
+      skill_globs:
+        - "skills/*"
+      # Agent/command definitions are copied into the runtime's config dir.
+      # `dest` is relative to that dir, which mega resolves from the sandbox
+      # (/sandbox/.deepagents for dcode, /sandbox/.openclaw for openclaw) —
+      # never hardcoded to .claude/.
+      copy:
+        - src: agents
+          dest: agents
+          optional: true
+        - src: commands
+          dest: commands
+          optional: true
+
+  - name: graphify
+    upstream: https://github.com/Graphify-Labs/graphify.git
+    fork: https://github.com/{fork_owner}/graphify.git
+    # graphify's default branch is `v8`, not `main`. If this drifts again, the
+    # code falls back to the remote's real HEAD and `mega triangle status`
+    # reports the mismatch rather than computing nonsense drift counts.
+    default_branch: v8
+    triangle: true
+    role: knowledge-graph
+    language: python
+    install:
+      # graphify is NOT a drop-in skills tree — it is a Python package that
+      # ships its own platform-aware installer. `graphify install <platform>`
+      # writes the SKILL.md into that platform's conventional location.
+      kind: python-package
+      # PyPI name is `graphifyy`; the console script is `graphify`.
+      package: graphifyy
+      version: "0.9.32"
+      probe: ["graphify", "--version"]
+      # graphify's own `install <platform>` writes to that platform's hardcoded
+      # path (.openclaw/, ~/.claude/, ...). None of those is right here: the
+      # langchain-deepagents-code runtime keeps skills under
+      # /sandbox/.deepagents/skills/. So mega assembles the skill directory from
+      # the repo and hands it to `nemoclaw skill install`, which resolves the
+      # correct per-agent location itself.
+      #
+      # Picks graphify/skill-{variant}.md + graphify/skills/{variant}/references/.
+      # `agents` is the runtime-neutral AGENTS.md variant; `claude`, `claw`,
+      # `codex`, `opencode` and friends also exist.
+      skill_variant: agents
+      # Build one graph per package rather than one for the whole workspace.
+      per_package: true
+
+  - name: nemoclaw
+    upstream: https://github.com/NVIDIA/NemoClaw.git
+    # NVIDIA-owned. The fork exists so you can carry local patches and open PRs,
+    # but nothing in mega-nemo builds nemoclaw from this clone — the installed
+    # CLI on the host is what drives sandboxes.
+    fork: https://github.com/{fork_owner}/NemoClaw.git
+    default_branch: main
+    triangle: true
+    role: runtime
+    language: typescript
+    host_only: true
+    install:
+      kind: none
+
+  - name: deepagents
+    upstream: https://github.com/langchain-ai/deepagents.git
+    fork: https://github.com/{fork_owner}/deepagents.git
+    default_branch: main
+    triangle: true
+    role: agent-sdk
+    language: python
+    # The sandbox image already bakes in the deepagents runtime that matches
+    # `nemoclaw agents list` -> langchain-deepagents-code. This clone is for
+    # reading the SDK and contributing upstream.
+    host_only: true
+    install:
+      kind: none
+    monorepo:
+      enabled: true
+      packages:
+        - "libs/*"
+        - "examples/*"
+
+# ---------------------------------------------------------------------------
+# Workspaces: the projects the sandboxed agent actually works on.
+#
+# Each workspace is mounted/uploaded into the sandbox and gets its own charter
+# (keystone) and knowledge graph (graphify). A workspace marked `monorepo` is
+# expanded into its packages, and per-package tooling runs for each.
+# ---------------------------------------------------------------------------
+workspaces:
+  - name: mega-nemo
+    path: .
+    monorepo:
+      enabled: false
+    charter: true
+    graph: true
