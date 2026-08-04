@@ -308,15 +308,15 @@ is installed: the agent stops grepping and starts traversing.
 mega agent "Using graphify, explain how request authentication flows through my-service. Cite the nodes."
 ```
 
-Directly, inside the sandbox:
+Or run graphify yourself, without the agent in the loop:
 
 ```bash
-mega sandbox connect
+mega sandbox exec -w my-service -- graphify query "where is the retry policy configured?"
 ```
 
-```bash
-cd ~/workspace/my-service && graphify query "where is the retry policy configured?"
-```
+`-w/--workspace` runs the command in that workspace's directory inside the
+sandbox, so you never have to remember the upload path. In a monorepo, add
+`--package apps/api` to land in one package.
 
 The three orientation verbs:
 
@@ -511,7 +511,7 @@ mega --dry-run --verbose <the command that failed>
 ```
 
 ```bash
-nemoclaw mega-nemo logs --follow
+mega sandbox logs --follow
 ```
 
 `--dry-run` prints the exact commands mega would run without running the
@@ -520,6 +520,9 @@ is the fastest way to find out whether mega is building the wrong command or the
 command itself is failing.
 
 ### Debugging your code
+
+These run inside the sandbox. Either `mega sandbox connect` first, or prefix
+each with `mega sandbox exec -w <workspace> --`.
 
 ```bash
 graphify explain "<symbol>"
@@ -550,8 +553,11 @@ rm -rf graphify-out && graphify extract . --code-only
 ```
 
 In a monorepo, run these **inside the package directory** — each package has its
-own graph. Running from the repo root queries the root graph, which may not
-exist.
+own graph, and querying from the repo root hits a root graph that may not exist:
+
+```bash
+mega sandbox exec -w platform --package apps/api -- graphify explain "RateLimiter"
+```
 
 ### Debugging the sandbox
 
@@ -560,21 +566,45 @@ mega sandbox status
 ```
 
 ```bash
-nemoclaw mega-nemo doctor --fix
+mega doctor --fix
 ```
 
 ```bash
-nemoclaw mega-nemo logs -n 200
+mega sandbox logs -n 200
+```
+
+```bash
+mega sandbox logs --follow --since 10m
 ```
 
 ```bash
 mega sandbox connect
 ```
 
-mega has no `exec` wrapper — drop to nemoclaw for one-off commands:
+For one-off commands, `exec` beats connecting and typing:
 
 ```bash
-nemoclaw mega-nemo exec --no-tty -- bash -lc "keystone version && graphify --version"
+mega sandbox exec -- bash -lc "keystone version && graphify --version"
+```
+
+The inner command's exit code becomes mega's exit code, so this composes in
+scripts and CI:
+
+```bash
+mega sandbox exec -w my-service -- pytest -q || echo "tests failed"
+```
+
+Flags after `--` belong to the inner command, never to mega — `--code-only`
+below is graphify's:
+
+```bash
+mega sandbox exec -w my-service -- graphify extract . --code-only
+```
+
+Long-running work needs the timeout raised (or `--timeout 0` to remove it):
+
+```bash
+mega sandbox exec --timeout 0 -w platform --package apps/api -- graphify extract .
 ```
 
 A stopped sandbox usually just needs starting, not rebuilding:
@@ -770,6 +800,8 @@ mega sandbox create --provider P --model M [--name N]
 mega sandbox rebuild [--dcode-auto-approval thread-opt-in]
 mega sandbox inference --provider P --model M
 mega sandbox list | status | connect | destroy
+mega sandbox exec [-w WORKSPACE [--package PKG] | --workdir PATH] [--timeout S] [--tty] -- <cmd>...
+mega sandbox logs [--follow|-f] [--tail|-n N] [--since 10m]
 mega agent "<prompt>"
 ```
 
@@ -781,7 +813,8 @@ mega workspace add <name> <path> [--monorepo] [--package GLOB]
 mega provision [--only STEP] [--workspace W] [--policy P]
 ```
 
-**Inside the sandbox**
+**Inside the sandbox** (prefix with `mega sandbox exec -w <workspace> --`, or
+`mega sandbox connect` first)
 
 ```bash
 keystone init | index | lint | verify | charter | watch

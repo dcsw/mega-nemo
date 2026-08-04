@@ -236,12 +236,41 @@ def exec_in(
     workdir: str | None = None,
     check: bool = True,
     timeout: int | None = 900,
+    tty: bool = False,
+    capture: bool = True,
 ) -> Result:
+    """Run a command inside the sandbox.
+
+    Internal callers want ``capture=True`` so they can parse the output;
+    ``mega sandbox exec`` wants ``capture=False`` so the user sees it stream.
+    """
     cmd = ["nemoclaw", name, "exec"]
     if workdir:
         cmd += ["--workdir", workdir]
-    cmd += ["--no-tty", "--", *argv]
-    return run(cmd, check=check, timeout=timeout)
+    if timeout is not None:
+        cmd += ["--timeout", str(timeout)]
+    cmd += ["--tty" if tty else "--no-tty", "--", *argv]
+    # Give the subprocess a little more rope than nemoclaw's own timeout, so
+    # nemoclaw gets to report the timeout itself instead of being killed first.
+    return run(cmd, check=check, timeout=None if timeout is None else timeout + 30, capture=capture)
+
+
+def logs(
+    name: str,
+    *,
+    follow: bool = False,
+    tail: int | None = None,
+    since: str | None = None,
+) -> Result:
+    argv = ["nemoclaw", name, "logs"]
+    if follow:
+        argv.append("--follow")
+    if tail is not None:
+        argv += ["--tail", str(tail)]
+    if since:
+        argv += ["--since", since]
+    # No timeout: --follow is meant to run until the user interrupts it.
+    return run(argv, check=False, capture=False, timeout=None)
 
 
 def sh_in(name: str, script: str, *, workdir: str | None = None, check: bool = True) -> Result:

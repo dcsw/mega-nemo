@@ -482,6 +482,99 @@ def sandbox_connect(name: NameOpt = None) -> None:
     nemoclaw.connect(_settings_for(name=name).sandbox)
 
 
+def _sandbox_workdir(
+    settings: Settings, workspace: str | None, package: str | None, workdir: str | None
+) -> str | None:
+    """Resolve --workdir / --workspace / --package into one sandbox path."""
+    if workdir and workspace:
+        _fail("pass --workdir or --workspace, not both")
+    if package and not workspace:
+        _fail("--package needs --workspace")
+    if workdir:
+        return workdir
+    if not workspace:
+        return None
+
+    # Validates the name against the manifest so a typo fails here rather than
+    # silently running in the wrong directory.
+    w = ctx.m.workspace(workspace)
+    root = f"{settings.sandbox_workspace.rstrip('/')}/{w.name}"
+    return f"{root}/{package.strip('/')}" if package else root
+
+
+@sandbox_app.command(
+    "exec",
+    # Everything after `--` is the command to run, not flags for mega.
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def sandbox_exec(
+    command: Annotated[
+        list[str] | None,
+        typer.Argument(help="Command to run inside the sandbox. Put it after `--`."),
+    ] = None,
+    name: NameOpt = None,
+    workspace: Annotated[
+        str | None,
+        typer.Option("--workspace", "-w", help="Run in this workspace's directory in the sandbox."),
+    ] = None,
+    package: Annotated[
+        str | None,
+        typer.Option("--package", help="With --workspace, a package subdirectory (monorepos)."),
+    ] = None,
+    workdir: Annotated[
+        str | None, typer.Option("--workdir", help="Absolute path inside the sandbox.")
+    ] = None,
+    timeout: Annotated[
+        int, typer.Option("--timeout", help="Seconds before the command is killed. 0 = no limit.")
+    ] = 900,
+    tty: Annotated[bool, typer.Option("--tty/--no-tty", help="Allocate a TTY.")] = False,
+) -> None:
+    """Run a command inside the sandbox.
+
+    The command's exit code becomes mega's exit code, so this composes in
+    scripts and CI.
+
+        mega sandbox exec -- keystone lint
+
+        mega sandbox exec -w platform --package apps/api -- graphify update
+    """
+    if not command:
+        _fail('nothing to run. Try: mega sandbox exec -- keystone version')
+
+    settings = _settings_for(name=name)
+    target = _sandbox_workdir(settings, workspace, package, workdir)
+
+    r = nemoclaw.exec_in(
+        settings.sandbox,
+        list(command),
+        workdir=target,
+        check=False,
+        timeout=None if timeout <= 0 else timeout,
+        tty=tty,
+        capture=False,
+    )
+    if not (r.ok or r.dry_run):
+        raise typer.Exit(r.code)
+
+
+@sandbox_app.command("logs")
+def sandbox_logs(
+    name: NameOpt = None,
+    follow: Annotated[bool, typer.Option("--follow", "-f", help="Stream new output.")] = False,
+    tail: Annotated[
+        int | None, typer.Option("--tail", "-n", help="Show only the last N lines.")
+    ] = None,
+    since: Annotated[
+        str | None, typer.Option("--since", help="Only output since a duration, e.g. 10m, 1h.")
+    ] = None,
+) -> None:
+    """Stream the sandbox's logs. `--follow` runs until you interrupt it."""
+    settings = _settings_for(name=name)
+    if not nemoclaw.exists(settings.sandbox) and not shell.DRY_RUN:
+        _fail(f"no sandbox named {settings.sandbox!r}. Run `mega sandbox create` first.")
+    nemoclaw.logs(settings.sandbox, follow=follow, tail=tail, since=since)
+
+
 @sandbox_app.command("destroy")
 def sandbox_destroy(
     name: NameOpt = None,

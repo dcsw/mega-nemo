@@ -244,8 +244,17 @@ mega agent "<prompt>"       one non-interactive dcode turn
 
 mega repos list|sync|fork
 mega triangle status|pull|push|start|pr|sync
-mega sandbox create|rebuild|inference|list|status|connect|destroy
+mega sandbox create|rebuild|inference|list|status|connect|exec|logs|destroy
 mega workspace list|add
+```
+
+`mega sandbox exec` runs a command in the sandbox and returns its exit code, so
+it composes in scripts. `-w <workspace>` (plus `--package` for monorepos) puts
+you in the right directory without memorizing upload paths; everything after
+`--` belongs to the inner command:
+
+```bash
+mega sandbox exec -w platform --package apps/api -- graphify extract . --code-only
 ```
 
 Global flags: `--dry-run` (print mutating commands instead of running them),
