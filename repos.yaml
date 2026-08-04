@@ -114,7 +114,14 @@ sources:
       # `codex`, `opencode` and friends also exist.
       skill_variant: agents
       # Build one graph per package rather than one for the whole workspace.
+      # Each package gets its own graphify-out/graph.json.
       per_package: true
+      # Args for the provision-time build. NOTE: there is no `graphify build`
+      # subcommand — a graph is created with `graphify extract <path>`.
+      # --code-only is pure local AST parsing and is guaranteed not to need an
+      # LLM key, which is what makes it safe to run unattended. Drop it (and
+      # add --backend ...) if you want semantic clustering at provision time.
+      build_args: ["--code-only"]
 
   - name: nemoclaw
     upstream: https://github.com/NVIDIA/NemoClaw.git

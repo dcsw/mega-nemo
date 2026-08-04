@@ -315,9 +315,37 @@ def test_graph_workspace_indexes_each_package(repo: Path, rec: Recorder) -> None
     prov.graph_workspace("sbx", plan, report, source=m.source("graphify"))
 
     assert plan.is_monorepo
-    assert rec.all_scripts.count("graphify build") == 2
+    # `graphify build` is not a real subcommand; extract is what creates a graph.
+    assert "graphify build" not in rec.all_scripts
+    assert rec.all_scripts.count("graphify extract . --code-only") == 2
     assert "cd /w/app/packages/one" in rec.all_scripts
     assert "cd /w/app/packages/two" in rec.all_scripts
+
+
+def test_graph_build_is_key_free_by_default(repo: Path, rec: Recorder) -> None:
+    """Provisioning runs unattended, so the default build must not need an LLM
+    key. --code-only is graphify's guaranteed-local path."""
+    m = load_manifest(repo)
+    plan = prov.plan_workspaces(m, Settings(sandbox_workspace="/w"), None)[0]
+    prov.graph_workspace("sbx", plan, prov.ProvisionReport("sbx"), source=m.source("graphify"))
+    assert "--code-only" in rec.all_scripts
+    assert "--backend" not in rec.all_scripts
+
+
+def test_graph_build_args_are_configurable(repo: Path, rec: Recorder) -> None:
+    m = load_manifest(repo)
+    src = m.source("graphify")
+    src.install["build_args"] = ["--backend", "ollama", "--no-cluster"]
+    plan = prov.plan_workspaces(m, Settings(sandbox_workspace="/w"), None)[0]
+    prov.graph_workspace("sbx", plan, prov.ProvisionReport("sbx"), source=src)
+    assert "graphify extract . --backend ollama --no-cluster" in rec.all_scripts
+
+
+def test_existing_graph_is_updated_not_rebuilt(repo: Path, rec: Recorder) -> None:
+    m = load_manifest(repo)
+    plan = prov.plan_workspaces(m, Settings(sandbox_workspace="/w"), None)[0]
+    prov.graph_workspace("sbx", plan, prov.ProvisionReport("sbx"), source=m.source("graphify"))
+    assert "if [ -f graphify-out/graph.json ]; then graphify update;" in rec.all_scripts
 
 
 def test_graph_workspace_respects_disable_flag(repo: Path, rec: Recorder) -> None:

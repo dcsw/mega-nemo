@@ -18,6 +18,10 @@ triangular git workflow back to every source repo.
    (read-only)          repos/<name>        dcsw/<name>
 ```
 
+📖 **[User guide](docs/USER_GUIDE.md)** — getting working, initializing a repo,
+and the full feature loop from orientation to pull request, with the debugging
+moves for each stage. Start there if you are setting this up for the first time.
+
 ## Why this exists
 
 Each of these tools has its own install story, its own idea of where config
@@ -197,7 +201,7 @@ Steps, all idempotent and independently runnable:
 | `keystone` | installs the pinned release binary, arch chosen from the sandbox's `uname -m` |
 | `metaswarm` | deploys all 14 `SKILL.md` trees via `nemoclaw skill install`, copies `agents/` and `commands/` into the runtime's config dir |
 | `graphify` | installs the `graphifyy` package, assembles its skill into standard shape, deploys via `nemoclaw skill install` |
-| `workspaces` | uploads each workspace, then `keystone init && index && lint` and `graphify build` per package |
+| `workspaces` | uploads each workspace, then `keystone init && index && lint` and `graphify extract . --code-only` per package |
 | `mcp` | registers keystone's MCP server with the in-sandbox agent |
 
 Two details worth knowing, because both are easy to get wrong by hand:
@@ -209,6 +213,10 @@ Two details worth knowing, because both are easy to get wrong by hand:
   `langchain-deepagents-code` runtime looks. mega assembles
   `skill-<variant>.md` + `references/` into a normal skill directory and lets
   `nemoclaw skill install` place it.
+- **There is no `graphify build`.** A graph is created with
+  `graphify extract <path>` (bare `graphify <path>` rewrites to it) and lands in
+  `graphify-out/graph.json`. mega builds with `--code-only`, the deterministic
+  AST path that needs no LLM key — the only thing safe to run unattended.
 - **Config dirs follow the agent.** dcode reads `/sandbox/.deepagents`,
   openclaw reads `/sandbox/.openclaw`. mega probes the sandbox for which one
   exists and falls back to the agent recorded in `sandboxes.json`, so

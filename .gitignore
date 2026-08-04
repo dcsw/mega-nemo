@@ -24,7 +24,8 @@ build/
 
 # Tool state
 /.charter/.cache/
-/.graphify/
+# graphify writes its knowledge graph here (GRAPHIFY_OUT overrides the name).
+graphify-out/
 /.metaswarm/state/
 /state/
 

@@ -424,7 +424,14 @@ def graph_workspace(
         report.add(f"graph:{plan.workspace.name}", True, "disabled in manifest", skipped=True)
         return
 
-    per_package = bool((source.install if source else {}).get("per_package", True))
+    spec = source.install if source else {}
+    per_package = bool(spec.get("per_package", True))
+    # `graphify build` does not exist — a graph is built with
+    # `graphify extract <path>` (bare `graphify <path>` rewrites to the same).
+    # --code-only is the deterministic AST path that provably needs no LLM key,
+    # which is the only thing safe to run unattended at provision time.
+    build_args = list(spec.get("build_args") or ["--code-only"])
+    arg_str = " ".join(_q(a) for a in build_args)
 
     targets = [
         plan.sandbox_path if pkg.is_root else f"{plan.sandbox_path}/{pkg.rel}"
@@ -440,7 +447,7 @@ set -euo pipefail
 export PATH="$HOME/.local/bin:$PATH"
 command -v graphify >/dev/null 2>&1 || {{ echo "graphify not installed" >&2; exit 3; }}
 cd {_q(target)}
-graphify build || graphify update
+if [ -f graphify-out/graph.json ]; then graphify update; else graphify extract . {arg_str}; fi
 """
         r = nemoclaw.sh_in(sandbox, script, check=False)
         if r.ok or r.dry_run:
